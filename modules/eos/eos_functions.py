@@ -13,22 +13,38 @@ def constants():
     kB= 1.380649E-16 # Boltzmann constant: erg/K 
     c_s = 3E10 # speed of light: cm/s 
     a = 4*sigma_sb/c_s 
-    return mh, kB, a 
+    R = 8.31446261815324E7 # ideal gas constant : erg/K/mol
+    return mh, kB, a, R
 
-def simple_eos(P, T, mu): 
+def temperature_solver(M, mu, U): 
+    """
+    Takes in mass, mean molecular weight, and specific internal energy after 
+    recieving mu and U from the nuclear module. Solves for the specific heat at a constant 
+    volume for an ideal monatomic gas and solves for T. 
+    :param M: Mass (g)
+    :param mu: Mean molecular weight (g/mole or amu/number of particles)
+    :param U: Specific internal energy (erg)
+    """
+    mh, kB, a, R = constants()
+    Cv = (3/2)*R # specific heat at constant volume for a monatomic ideal gas 
+    n = mu/M # number of moles 
+    T = U/(n*Cv) # in Kelvin 
+    T = np.asarray(T, dtype=float)
+    return T 
+def simple_eos(P, mu, T): 
     """
     Solves the polytropic form of the PV-nKbT equation of state. 
     This function does not handle cases where electron degeneracy 
     or ultra relativistic gas are present. It will best model stars 
     that fall between 0.7Msun <= M 5Msun. 
     :param P: Pressure (g cm^-1 s^-2)
-    :param T: Temperature (K)
-    :param mu: molar mass (g/moles)
+    :param mu: molar mass (g/moles or amu/number of particles) 
+    :param M: enclosed mass (g) 
+    :param U: specific internal energy (erg)
     """
-    mh, kB, a = constants()
-    pressure = np.asarray(P, dtype=float)
-    temp = np.asarray(T, dtype = float)
-    P_rad = (1/3)*a*temp**4
-    rho = (pressure - P_rad)*(mu*mh)/(kB*temp)
-    rho = np.asarray(rho, dtype = float)
+    mh, kB, a, R = constants()
+    P = np.asarray(P, dtype=float)
+    P_rad = (1/3)*a*T**4
+    rho = (P - P_rad)*(mu*mh)/(kB*T)
+    rho = np.asarray(rho, dtype=float)
     return rho
