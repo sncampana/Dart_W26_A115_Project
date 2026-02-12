@@ -38,9 +38,9 @@ def burn(temp: float, rho: float, time: float):
     # output specific energy (ergs/g/s) pick mass to multiply to get total internal energy and mean molecular mass
     
     #print(results[0].composition.getMassFraction())
-    #print(results[0].composition.__dir__())
-
-    return results
+    #print(results[0].composition.getMeanParticleMass())
+    print(results[0].__dir__())
+    #return results
 
     
     #plt.plot(temps,energies)

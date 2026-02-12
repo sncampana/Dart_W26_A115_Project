@@ -22,19 +22,23 @@ def init_netIn(temp: float, rho: float, time: float, comp: Composition) -> NetIn
     return netIn
 
 
+# ************** CHECK README.txt FOR DETAILED INSTRUCTIONS ON HOW TO ACCESS PROPERTIES WITHIN THE OUTPUT OF BURN() ****************
 
 # 'temp', 'rho', and 'comp' should be arrays. 'time' is your time step in seconds. 
-# burn() outputs the delta energy, mean molecular mass, and mass fraction results for your given time step.
-# for the very first time step, leave 'comp' as none (it calls a function with an initial composition)
-# for the following time steps, update 'comp' with the previous 'mass_frac' burn() output
+# burn() outputs a list of NetOut structs that contain the results for each shell evolved over the time step.
+# This includes delta energy, mean molecular mass, mass fraction, etc.
+# for the very first time step, leave 'comp' as none (it calls a function with an initial composition) (default of comp is None, so you can leave it blank)
+# for the following time steps, update 'comp' with the previous mass fraction burn() output
 # -----------------------------------------------------------
-# Example usage: 
+# *Example usage:* 
 # - For initial run
 # temps = np.linspace(1.5e7, 2e7, 100)
 # rhos = np.linspace(1.5e2, 1.5e2, 100)
-# e, mu, mf = nuc_burn.burn(temps, rhos, 1000)
-# - For following runs
-# e2, mu2, mf2 = nuc_burn.burn(newtemp, newrho, 1000, mf)
+# results = nuc_burn.burn(temps, rhos, 1000)
+
+# - For following run:
+# results2 = nuc_burn.burn(newtemp, newrho, 1000, newcomp)
+# - and so on...
 def burn(temp: float, rho: float, time: float, comp=None):
     if comp is None:
         C = init_composition() 
