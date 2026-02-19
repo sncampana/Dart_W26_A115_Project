@@ -5,6 +5,8 @@ from sixseven.timestep.timestep import dyn_timestep
 from sixseven.eos.eos_functions import *
 from sixseven.nuclear.nuc_burn import *
 
+# run with python -m sixseven.eos.testing 
+
 N=10
 r = np.logspace(1,15, N)
 temps = 1.5E8 * r**(-0.01)
