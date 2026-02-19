@@ -1,13 +1,19 @@
 # -----
-# run this file with the command "python -m modules.timestep.testing" in the project directory
-# 
+# run this file with the command "python -m sixseven.timestep.testing" in the project directory
 # -----
+
+import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
 from sixseven.timestep.timestep import dyn_timestep
 from sixseven.eos.eos_functions import *
-from sixseven.nuclear.nuc_burn import *
+from sixseven.nuclear.nuc_burn import burn
+from sixseven.transport.transport_simple import transport_step
+
+# mass cord is grams, mass enclosed 
+# Hp is 1e9 ish 
+# v conv is 1e3-5 in cgs
 
 def main():
     print("Working ... ")
@@ -21,31 +27,49 @@ def main():
     sarr = [] # stores step sizes for each iteraetion
     tarr = [] # simulation time at each step (seconds)
 
-    step = 1e15 # initial step 
-    max_t = 1e17 # total time
+    step = 1e14 # initial step 
+    max_t = 1e16 # total time
 
-    # single mass element dM - representative of the core of the star
-    # this N can be changed to track more dMs, doing one for now
-    N = 1
+    N = 100 # number of mass elements tracked 
     u = np.empty((4,N)) # array of initial T, rho, eps, mu for each dM - shape: (4,N)
-    T = np.array([1e7]) # burn() requires array inputs, this is the quick and dirty fix, will not be an issue later because each dM will have an associate initial T stored in an array
-    rho = np.array([1e2])
-    eps,mu,mass_frac = burn(temp=T,rho=rho,time=1,comp=None)
+    T = np.ones(N) * 1e7 # burn requires arrays
+    rho = np.ones(N) * 1e2
+    dM = np.linspace(1e-5,1,N) * 1e32 # mass enclosed!
+
+    results = burn(temps=T,rhos=rho,time=1.,comps=None)
+
+    structure = {"m":dM, 
+                 "Hp":np.ones(N) * 1e9, 
+                 "v_mlt":np.ones(N)*1e5, # guess
+                 "is_convective":np.full(N, False, dtype=bool), 
+                 "grad_rad":np.ones(N) * 0.4, # guess
+                 "grad_ad":np.ones(N) * 0.3, # guess
+                 "grad_mu":np.ones(N) * 0.01, # guess
+                 "K":np.ones(N) * 1e7, # guess
+                 "Cp":np.ones(N) * 1e8, # guess
+                 "rho":rho,
+                 "T":T}
+    # we ball ?
+
+    # intital diffusion from aretemis
+    diff_results = transport_step(comps=results,structure=structure,dt=1.)
+
+    eps = []
+    mu = []
+    mol_abund = []
+    for i,j in enumerate(diff_results):
+        eps.append(j.energy)
+        mu.append(j.composition.getMeanParticleMass()) 
+        mol_abund.append(j.composition)
+
+    eps = np.array(eps)
+    mu = np.array(mu)
+    mol_abund = np.array(mol_abund)
+    
     u[0],u[1],u[2],u[3] = T,rho,eps,mu # initial conditions, after 1 sec
 
-    P = 1e17 # fixed value for now, roughly that of slar core
-    dM = 1e32 # grams  - 1e32 is sun core mass, mass of the one element 
+    P = 1e17 # fixed value for now, roughly that of solar core
     U = init_U(mu=u[3],dM=dM,T=u[0])
-
-    print(" ----- Initial Values ----- ")
-    print("Initial Internal Energy:", U)
-    print("Mass: ", dM)
-    print("Pressure: ", P)
-    print("Temp: ", u[0])
-    print("Dens: ", u[1])
-    print("Eps: ", u[2])
-    print("Mu: ", u[3])
-    print(" ----- ")
 
     t = 0 # initial time
     n = 0 # initial step counter
@@ -63,24 +87,56 @@ def main():
 
         T,rho,eps,mu = u[0],u[1],u[2],u[3] # setting variables from array for readability 
 
-        eps, mu, mass_frac = burn(temp=T,rho=rho,time=step,comp=mass_frac) # sasha function
-        eps = np.asarray(eps) # setting the lists as arrays
-        mu = np.asarray(mu)
+        half_step = step / 2 # run this twice over the loop
+        for i in range(2):
+            results = burn(temps=T,rhos=rho,time=half_step,comps=mol_abund) # sasha - nuc burning 
+            # print(results[0].composition.getMolarAbundance("H-1"))
+            # sys.exit()
+            Hp = (1.36e-16 * T) / (mu * 1.67e-24 * 2.74e4)
+            structure = {"m":dM, 
+                         "Hp":Hp, 
+                         "v_mlt":np.ones(N) * 1e5, # guess
+                         "is_convective":np.full(N, False, dtype=bool), 
+                         "grad_rad":np.ones(N) * 0.4, # guess
+                         "grad_ad":np.ones(N) * 0.3, # guess
+                         "grad_mu":np.ones(N) * 0.01, # guess
+                         "K":np.ones(N) * 1e7, # guess
+                         "Cp":np.ones(N) * 1e8, # guess
+                         "rho":rho,
+                         "T":T}
+            
+            # diffusion of species after burning
+            diff_results = transport_step(comps=results,structure=structure, dt= half_step) # artemis - simple diffusion
+            
+            # defining these here so they get updated each time w/i inner loop
+            eps = []
+            mu = [] 
+            mol_abund = []
+            for i,j in enumerate(diff_results):
+                eps.append(j.energy)
+                mu.append(j.composition.getMeanParticleMass()) 
+                mol_abund.append(j.composition)
 
-        U = update_U(U,eps) # cassie - updates internal energy 
-        T = temperature_solver(dM=dM,mu=mu,U=U) # cassie - solves temperature
-        rho = simple_eos(P=P,mu=mu,T=T) # cassie - gets dens from ideal gas eos
+            eps = np.asarray(eps) # setting the lists as arrays
+            mu = np.asarray(mu)
+            mol_abund = np.array(mol_abund)
 
-        du = np.array([T - u[0], rho - u[1], eps - u[2], mu - u[3]]) # change between steps
-        step, p, dp = dyn_timestep(u, du, step, hfactor=1e13, min_step=1e8) # calc timestep, p, dp
+            U = update_U(U,eps) # cassie - updates internal energy 
+            T = temperature_solver(dM=dM,mu=mu,U=U) # cassie - solves temperature
+            rho = simple_eos(P=P,mu=mu,T=T) # cassie - gets dens from ideal gas eos
+            print(T)
+            # make this derivatives instead of simple differences
+            du = np.array([T - u[0], rho - u[1], eps - u[2], mu - u[3]]) # change between steps
+        
+        step, p, dp = dyn_timestep(u, du, step, hfactor=1e15, min_step=1e8) # calc timestep, p, dp
 
         sarr.append(step)
         parr.append(p) 
         dparr.append(dp)
-        Tarr.append(T[0]) # take single values for now, doesn't matter when N = 1
-        rhoarr.append(rho[0])
-        epsarr.append(eps[0])
-        muarr.append(mu[0])
+        Tarr.append(T[-1]) # take single values for now to plot, just checking things 
+        rhoarr.append(rho[-1])
+        epsarr.append(eps[-1])
+        muarr.append(mu[-1])
         tarr.append(t)
 
         u[0],u[1],u[2],u[3] = T,rho,eps,mu # updating array w/ new values 
@@ -101,7 +157,14 @@ def main():
     plt.loglog(range(n),dparr/parr)
     plt.xlabel("Iteration (n)")
     plt.ylabel("Max Change in Step / Value (dp/p)")
-    plt.savefig("./modules/timestep/n-frac-change.png",bbox_inches='tight')
+    # plt.savefig("./modules/timestep/n-frac-change.png",bbox_inches='tight')
+    plt.show()
+
+    plt.figure(figsize=(8,8))
+    plt.loglog(tarr,sarr)
+    plt.xlabel("Sim Time")
+    plt.ylabel("Step Size")
+    # plt.savefig("./modules/timestep/n-frac-change.png",bbox_inches='tight')
     plt.show()
 
     plt.figure(figsize=(8,8))
@@ -110,7 +173,7 @@ def main():
     plt.yscale('log')
     plt.xlabel("Step Size (s)")
     plt.ylabel("Max. Change per Itereation")
-    plt.savefig("./modules/timestep/step-change.png",bbox_inches='tight')
+    # plt.savefig("./modules/timestep/step-change.png",bbox_inches='tight')
     plt.show()
 
     plt.figure(figsize=(8,8))
@@ -119,7 +182,7 @@ def main():
     # plt.yscale('log')
     plt.xlabel("Sim. TIme (Myr)")
     plt.ylabel("Core Temperature (K)")
-    plt.savefig("./modules/timestep/time-temp.png",bbox_inches='tight')
+    # plt.savefig("./modules/timestep/time-temp.png",bbox_inches='tight')
     plt.show()
 
     plt.figure(figsize=(8,8))
@@ -128,7 +191,7 @@ def main():
     # plt.yscale('log')
     plt.xlabel("Sim. Time (Myr)")
     plt.ylabel("Core Density (g cm^-3)")
-    plt.savefig("./modules/timestep/time-density.png",bbox_inches='tight')
+    # plt.savefig("./modules/timestep/time-density.png",bbox_inches='tight')
     plt.show()
 
 if __name__ == "__main__":

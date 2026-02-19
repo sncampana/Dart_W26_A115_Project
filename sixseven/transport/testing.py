@@ -10,11 +10,13 @@ from sixseven.transport.transport_simple import transport_step
 def main():
 
     n_shells = 100
-    dt = 1.0  # seconds 
+    dt = 1.0e14  # seconds 
 
     temps = np.linspace(1.5e7, 4e6, n_shells)
     density = np.linspace(160, 100, n_shells)
-    m = np.linspace(0, 1, n_shells)
+    # ben bug fix here: this array represents mass enclosed within a given radius
+    # if the first element of this array is zero, then EoS breaks which makes burning break -> because the mass is zero! 
+    m = np.linspace(1e-5, 1, n_shells) * 1e32 # multipled by this by a total mass in grams 
 
     structure = {
         "m": m,
@@ -29,7 +31,7 @@ def main():
         "rho": density,
         "T": temps,
     }
-    results = burn(temps=temps, rhos=density, time=1, comps=None)
+    results = burn(temps=temps, rhos=density, time=dt, comps=None)
 
     comps = results 
     X_new = transport_step(comps, structure, dt)
